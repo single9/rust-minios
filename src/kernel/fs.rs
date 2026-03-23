@@ -43,6 +43,47 @@ impl FileSystem {
         // Create files in /home
         fs.create_file_with_content("/home/readme.txt", "Welcome to rust-minios!\nA micro OS simulator built in Rust.\n");
         fs.create_file_with_content("/home/hello.txt", "Hello, World!\n");
+        fs.create_file_with_content("/home/demo.sh",
+"# demo.sh - rust-minios 示範腳本
+# 使用 run /home/demo.sh 執行
+
+echo === rust-minios Script Demo ===
+
+# 變數賦值與展開
+NAME=rust-minios
+echo Hello from $NAME!
+
+# 建立目錄與檔案
+mkdir /tmp/demo
+touch /tmp/demo/output.txt
+echo Script started > /tmp/demo/output.txt
+
+# for 迴圈：啟動多個程序
+echo --- Launching workers ---
+for W in alpha beta gamma
+  exec $W
+  echo Started worker: $W
+end
+
+# 顯示程序列表
+echo --- Process list ---
+ps
+
+# if/else 條件：檢查檔案是否存在
+if exists /tmp/demo/output.txt
+  echo Output file exists!
+  cat /tmp/demo/output.txt
+else
+  echo Output file not found.
+end
+
+# 記憶體配置
+echo --- Memory allocation ---
+malloc 4096
+free
+
+echo === Demo complete ===
+");
 
         fs
     }

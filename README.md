@@ -13,6 +13,7 @@
 | [docs/filesystem.md](./docs/filesystem.md)               | 虛擬檔案系統 (VFS)  |
 | [docs/io-syscall.md](./docs/io-syscall.md)               | IO 子系統與系統呼叫 |
 | [docs/tui-visualization.md](./docs/tui-visualization.md) | TUI 視覺化介面操作  |
+| [docs/scripting.md](./docs/scripting.md)                 | Shell 腳本語言      |
 
 ## 快速開始
 

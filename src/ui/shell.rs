@@ -1,4 +1,5 @@
 use crate::kernel::{Kernel, Syscall, SyscallResult};
+use std::collections::HashMap;
 
 pub struct Shell {
     pub history: Vec<String>,
@@ -6,6 +7,7 @@ pub struct Shell {
     pub output_lines: Vec<String>,
     pub scroll_offset: usize,
     pub cwd: String,
+    pub vars: HashMap<String, String>,
 }
 
 impl Shell {
@@ -16,6 +18,7 @@ impl Shell {
             output_lines: Vec::new(),
             scroll_offset: 0,
             cwd: "/home".to_string(),
+            vars: HashMap::new(),
         };
         shell.push_output("rust-minios shell v0.1.0");
         shell.push_output("Type 'help' for available commands.");
@@ -77,6 +80,198 @@ impl Shell {
         }
     }
 
+    /// 展開字串中的 $VAR 變數
+    fn expand_vars(&self, input: &str) -> String {
+        let mut result = String::new();
+        let mut chars = input.chars().peekable();
+        while let Some(ch) = chars.next() {
+            if ch == '$' {
+                let mut name = String::new();
+                while let Some(&c) = chars.peek() {
+                    if c.is_alphanumeric() || c == '_' {
+                        name.push(c);
+                        chars.next();
+                    } else {
+                        break;
+                    }
+                }
+                if name.is_empty() {
+                    result.push('$');
+                } else {
+                    result.push_str(self.vars.get(&name).map(|s| s.as_str()).unwrap_or(""));
+                }
+            } else {
+                result.push(ch);
+            }
+        }
+        result
+    }
+
+    /// 執行一段腳本文字（支援變數、if/else/end、for/end、#註解）
+    pub fn run_script(&mut self, script: &str, kernel: &mut Kernel) -> Option<String> {
+        let lines: Vec<&str> = script.lines().collect();
+        let mut ip = 0; // instruction pointer
+        let mut editor_file: Option<String> = None;
+
+        while ip < lines.len() {
+            let raw = lines[ip].trim();
+            ip += 1;
+
+            // 跳過空行與註解
+            if raw.is_empty() || raw.starts_with('#') {
+                continue;
+            }
+
+            let line = self.expand_vars(raw);
+            let line = line.trim();
+
+            // 變數賦值：VAR=value
+            if let Some(eq_pos) = line.find('=') {
+                let key = &line[..eq_pos];
+                if key.chars().all(|c| c.is_alphanumeric() || c == '_') && !key.is_empty() {
+                    let value = line[eq_pos + 1..].to_string();
+                    self.vars.insert(key.to_string(), value);
+                    continue;
+                }
+            }
+
+            let parts: Vec<&str> = line.splitn(2, ' ').collect();
+            match parts[0] {
+                // if <condition> ... else ... end
+                "if" => {
+                    let cond = parts.get(1).copied().unwrap_or("").trim();
+                    let cond_result = self.eval_condition(cond, kernel);
+
+                    // 收集 if-body 與 else-body
+                    let mut if_body: Vec<String> = Vec::new();
+                    let mut else_body: Vec<String> = Vec::new();
+                    let mut in_else = false;
+                    let mut depth = 1;
+
+                    while ip < lines.len() {
+                        let inner = lines[ip].trim();
+                        ip += 1;
+                        let inner_exp = self.expand_vars(inner);
+                        let inner_trimmed = inner_exp.trim().to_string();
+                        let first_word = inner_trimmed.split_whitespace().next().unwrap_or("");
+                        match first_word {
+                            "if" | "for" => {
+                                depth += 1;
+                                if in_else { else_body.push(inner.to_string()); }
+                                else { if_body.push(inner.to_string()); }
+                            }
+                            "else" if depth == 1 => { in_else = true; }
+                            "end" => {
+                                depth -= 1;
+                                if depth == 0 { break; }
+                                if in_else { else_body.push(inner.to_string()); }
+                                else { if_body.push(inner.to_string()); }
+                            }
+                            _ => {
+                                if in_else { else_body.push(inner.to_string()); }
+                                else { if_body.push(inner.to_string()); }
+                            }
+                        }
+                    }
+
+                    let body = if cond_result { if_body } else { else_body };
+                    let block = body.join("\n");
+                    if let Some(f) = self.run_script(&block, kernel) {
+                        editor_file = Some(f);
+                    }
+                }
+
+                // for VAR in val1 val2 val3 ... end
+                "for" => {
+                    let rest = parts.get(1).copied().unwrap_or("");
+                    let for_parts: Vec<&str> = rest.splitn(3, ' ').collect();
+                    let var_name = for_parts.first().copied().unwrap_or("").to_string();
+                    let values: Vec<String> = if for_parts.len() >= 3 && for_parts[1] == "in" {
+                        for_parts[2].split_whitespace().map(|s| s.to_string()).collect()
+                    } else {
+                        Vec::new()
+                    };
+
+                    // 收集 loop body
+                    let mut loop_body: Vec<String> = Vec::new();
+                    let mut depth = 1;
+                    while ip < lines.len() {
+                        let inner = lines[ip].trim();
+                        ip += 1;
+                        let inner_exp = self.expand_vars(inner);
+                        let first_word = inner_exp.trim().split_whitespace().next().unwrap_or("").to_string();
+                        match first_word.as_str() {
+                            "if" | "for" => { depth += 1; loop_body.push(inner.to_string()); }
+                            "end" => {
+                                depth -= 1;
+                                if depth == 0 { break; }
+                                loop_body.push(inner.to_string());
+                            }
+                            _ => { loop_body.push(inner.to_string()); }
+                        }
+                    }
+
+                    let block = loop_body.join("\n");
+                    for val in values {
+                        self.vars.insert(var_name.clone(), val);
+                        if let Some(f) = self.run_script(&block, kernel) {
+                            editor_file = Some(f);
+                        }
+                    }
+                }
+
+                "else" | "end" => {
+                    // 脫離上下文時忽略
+                }
+
+                _ => {
+                    if let Some(f) = self.execute_command(line, kernel) {
+                        editor_file = Some(f);
+                    }
+                }
+            }
+        }
+        editor_file
+    }
+
+    /// 評估條件表達式，回傳 bool
+    /// 支援：`<cmd>` 的輸出非空視為 true、`VAR == value`、`VAR != value`
+    fn eval_condition(&mut self, cond: &str, kernel: &mut Kernel) -> bool {
+        let cond = cond.trim();
+
+        // VAR == value
+        if let Some(pos) = cond.find("==") {
+            let lhs = cond[..pos].trim().to_string();
+            let rhs = cond[pos + 2..].trim().to_string();
+            let lhs_val = self.expand_vars(&lhs);
+            let rhs_val = self.expand_vars(&rhs);
+            return lhs_val.trim() == rhs_val.trim();
+        }
+
+        // VAR != value
+        if let Some(pos) = cond.find("!=") {
+            let lhs = cond[..pos].trim().to_string();
+            let rhs = cond[pos + 2..].trim().to_string();
+            let lhs_val = self.expand_vars(&lhs);
+            let rhs_val = self.expand_vars(&rhs);
+            return lhs_val.trim() != rhs_val.trim();
+        }
+
+        // exists <path>：檔案/目錄是否存在
+        if let Some(path_part) = cond.strip_prefix("exists ") {
+            let path = self.expand_vars(path_part.trim());
+            let path = self.resolve_path(path.trim());
+            return matches!(
+                kernel.dispatch(Syscall::Open { path }),
+                SyscallResult::Success
+            );
+        }
+
+        // 空字串視為 false，非空視為 true（變數展開後）
+        let expanded = self.expand_vars(cond);
+        !expanded.trim().is_empty() && expanded.trim() != "0" && expanded.trim() != "false"
+    }
+
     pub fn execute_command(&mut self, cmd: &str, kernel: &mut Kernel) -> Option<String> {
         let parts: Vec<&str> = cmd.trim().splitn(2, ' ').collect();
         let command = parts[0];
@@ -96,11 +291,22 @@ impl Shell {
                 self.push_output("  exec <name>       - Run new process");
                 self.push_output("  free              - Show memory stats");
                 self.push_output("  malloc <n>        - Allocate n bytes");
-                self.push_output("  echo <text>       - Echo text");
+                self.push_output("  echo <text>       - Echo text (supports $VAR)");
                 self.push_output("  pwd               - Print working dir");
                 self.push_output("  cd <path>         - Change directory");
                 self.push_output("  tree              - Show filesystem tree");
                 self.push_output("  edit <file>       - Open text editor");
+                self.push_output("  run <file>        - Execute a shell script");
+                self.push_output("  set [VAR=value]   - Set/list variables");
+                self.push_output("  unset <VAR>       - Remove variable");
+                self.push_output("Script syntax:");
+                self.push_output("  VAR=value         - Assign variable");
+                self.push_output("  $VAR              - Expand variable");
+                self.push_output("  # comment         - Comment line");
+                self.push_output("  if COND/else/end  - Conditional");
+                self.push_output("  for V in a b c/end- Loop");
+                self.push_output("  if exists <path>  - File exists check");
+                self.push_output("  if A == B         - String equality");
             }
             "ls" => {
                 let path = if args.is_empty() {
@@ -230,7 +436,8 @@ impl Shell {
                 }
             }
             "echo" => {
-                self.push_output(args);
+                let expanded = self.expand_vars(args);
+                self.push_output(&expanded);
             }
             "pwd" => {
                 let cwd = self.cwd.clone();
@@ -272,7 +479,67 @@ impl Shell {
                     return Some(path);
                 }
             }
+            // 執行腳本檔案
+            "run" => {
+                if args.is_empty() {
+                    self.push_output("Usage: run <script>");
+                } else {
+                    let path = self.resolve_path(args);
+                    match kernel.dispatch(Syscall::Read { path: path.clone() }) {
+                        SyscallResult::Str(script) => {
+                            self.push_output(&format!("--- Running script: {} ---", path));
+                            let script_owned = script.clone();
+                            let result = self.run_script(&script_owned, kernel);
+                            self.push_output(&format!("--- Script done: {} ---", path));
+                            return result;
+                        }
+                        SyscallResult::Err(e) => self.push_output(&format!("run: {}", e)),
+                        _ => {}
+                    }
+                }
+            }
+            // 設定/列出變數
+            "set" => {
+                if args.is_empty() {
+                    if self.vars.is_empty() {
+                        self.push_output("(no variables set)");
+                    } else {
+                        let pairs: Vec<String> = self.vars.iter()
+                            .map(|(k, v)| format!("{}={}", k, v))
+                            .collect();
+                        for p in pairs {
+                            self.push_output(&p);
+                        }
+                    }
+                } else if let Some(eq) = args.find('=') {
+                    let key = args[..eq].trim().to_string();
+                    let val = args[eq + 1..].trim().to_string();
+                    self.vars.insert(key, val);
+                } else {
+                    self.push_output("Usage: set VAR=value  or  set (list all)");
+                }
+            }
+            // 刪除變數
+            "unset" => {
+                if args.is_empty() {
+                    self.push_output("Usage: unset <VAR>");
+                } else {
+                    self.vars.remove(args.trim());
+                    self.push_output(&format!("unset {}", args.trim()));
+                }
+            }
             _ => {
+                // 嘗試直接執行（VAR=value 賦值語法）
+                if let Some(eq_pos) = cmd.find('=') {
+                    let key = cmd[..eq_pos].trim();
+                    if key.chars().all(|c| c.is_alphanumeric() || c == '_') && !key.is_empty() {
+                        let val = cmd[eq_pos + 1..].trim().to_string();
+                        let val = self.expand_vars(&val);
+                        self.vars.insert(key.to_string(), val.clone());
+                        self.push_output(&format!("{}={}", key, val));
+                        return None;
+                    }
+                }
                 self.push_output(&format!("Unknown command: {}. Type 'help' for help.", command));
             }
         }
