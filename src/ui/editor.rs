@@ -6,6 +6,7 @@ pub struct Editor {
     pub cursor_row: usize,
     pub cursor_col: usize,
     pub scroll_offset: usize,
+    pub scroll_col: usize,
     pub modified: bool,
     pub status_msg: String,
 }
@@ -18,6 +19,7 @@ impl Editor {
             cursor_row: 0,
             cursor_col: 0,
             scroll_offset: 0,
+            scroll_col: 0,
             modified: false,
             status_msg: "Ctrl+S: Save | Ctrl+Q: Quit".to_string(),
         }
@@ -37,6 +39,7 @@ impl Editor {
         self.cursor_row = 0;
         self.cursor_col = 0;
         self.scroll_offset = 0;
+        self.scroll_col = 0;
         self.modified = false;
         self.status_msg = format!("Opened: {}", filename);
     }
@@ -142,11 +145,16 @@ impl Editor {
         }
     }
 
-    pub fn adjust_scroll(&mut self, visible_rows: usize) {
+    pub fn adjust_scroll(&mut self, visible_rows: usize, visible_cols: usize) {
         if self.cursor_row < self.scroll_offset {
             self.scroll_offset = self.cursor_row;
         } else if self.cursor_row >= self.scroll_offset + visible_rows {
             self.scroll_offset = self.cursor_row - visible_rows + 1;
+        }
+        if self.cursor_col < self.scroll_col {
+            self.scroll_col = self.cursor_col;
+        } else if visible_cols > 0 && self.cursor_col >= self.scroll_col + visible_cols {
+            self.scroll_col = self.cursor_col - visible_cols + 1;
         }
     }
 

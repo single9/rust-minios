@@ -113,46 +113,50 @@ fn render_dashboard_content(f: &mut Frame, area: Rect, app: &App) {
     f.render_widget(stats_widget, chunks[1]);
 }
 
-fn render_shell_view(f: &mut Frame, area: Rect, app: &App) {
+fn render_shell_view(f: &mut Frame, area: Rect, app: &mut App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(3), Constraint::Length(3)])
         .split(area);
 
-    let shell = &app.shell;
     let visible_height = chunks[0].height.saturating_sub(2) as usize;
-    let total_lines = shell.output_lines.len();
-    let start = if total_lines > visible_height {
-        total_lines - visible_height
-    } else {
-        0
-    };
+    let total_lines = app.shell.output_lines.len();
+    let max_start = total_lines.saturating_sub(visible_height);
+    let start = app.shell.scroll_offset.min(max_start);
+    // Normalize so ↑↓ work immediately from the current display position
+    app.shell.scroll_offset = start;
 
-    let output_text: Vec<Line> = shell.output_lines[start..]
+    let output_text: Vec<Line> = app.shell.output_lines[start..]
         .iter()
         .map(|s| Line::from(s.as_str()))
         .collect();
 
     let output_widget = Paragraph::new(output_text)
-        .block(Block::bordered().title(" Shell "));
+        .block(Block::bordered().title(" Shell (↑↓ scroll) "));
     f.render_widget(output_widget, chunks[0]);
 
     // Input line
-    let input_line = format!("{}$ {}", shell.cwd, shell.current_input);
+    let input_line = format!("{}$ {}", app.shell.cwd, app.shell.current_input);
     let input_widget = Paragraph::new(input_line)
         .block(Block::default().borders(Borders::ALL).title(" Input "));
     f.render_widget(input_widget, chunks[1]);
 }
 
-fn render_editor_view(f: &mut Frame, area: Rect, app: &App) {
+fn render_editor_view(f: &mut Frame, area: Rect, app: &mut App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(3), Constraint::Length(1), Constraint::Length(1)])
         .split(area);
 
-    let editor = &app.editor;
+    let line_num_width: u16 = 5; // "NNNN " = 5 chars
     let visible_rows = chunks[0].height.saturating_sub(2) as usize;
+    let visible_cols = chunks[0].width.saturating_sub(2 + line_num_width) as usize;
+
+    app.editor.adjust_scroll(visible_rows, visible_cols);
+
+    let editor = &app.editor;
     let start_row = editor.scroll_offset;
+    let start_col = editor.scroll_col;
 
     let lines: Vec<Line> = editor.lines
         .iter()
@@ -161,15 +165,16 @@ fn render_editor_view(f: &mut Frame, area: Rect, app: &App) {
         .take(visible_rows)
         .map(|(i, line)| {
             let line_num = format!("{:4} ", i + 1);
+            let visible_line: String = line.chars().skip(start_col).collect();
             if i == editor.cursor_row {
                 Line::from(vec![
                     Span::styled(line_num, Style::default().fg(Color::DarkGray)),
-                    Span::styled(line.as_str(), Style::default().bg(Color::DarkGray)),
+                    Span::styled(visible_line, Style::default().bg(Color::DarkGray)),
                 ])
             } else {
                 Line::from(vec![
                     Span::styled(line_num, Style::default().fg(Color::DarkGray)),
-                    Span::raw(line.as_str()),
+                    Span::raw(visible_line),
                 ])
             }
         })

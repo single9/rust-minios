@@ -31,8 +31,8 @@ impl Shell {
         if self.output_lines.len() > 200 {
             self.output_lines.remove(0);
         }
-        // Auto-scroll to bottom
-        self.scroll_offset = self.output_lines.len().saturating_sub(1);
+        // Auto-scroll to bottom: set past end, render will clamp it
+        self.scroll_offset = self.output_lines.len();
     }
 
     pub fn handle_input(&mut self, ch: char) {
@@ -50,9 +50,7 @@ impl Shell {
     }
 
     pub fn scroll_down(&mut self) {
-        if self.scroll_offset + 1 < self.output_lines.len() {
-            self.scroll_offset += 1;
-        }
+        self.scroll_offset = self.scroll_offset.saturating_add(1);
     }
 
     pub fn handle_enter(&mut self, kernel: &mut Kernel) -> Option<String> {
