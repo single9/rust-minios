@@ -132,7 +132,7 @@ fn render_shell_view(f: &mut Frame, area: Rect, app: &mut App) {
         .collect();
 
     let output_widget = Paragraph::new(output_text)
-        .block(Block::bordered().title(" Shell (↑↓ scroll) "));
+        .block(Block::bordered().title(" Shell (Up/Down: scroll) "));
     f.render_widget(output_widget, chunks[0]);
 
     // Input line

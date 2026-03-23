@@ -18,7 +18,7 @@ pub fn render_memory_view(f: &mut Frame, area: Rect, memory: &MemoryManager) {
 
     // Title
     lines.push(Line::from(vec![
-        Span::styled("Memory Map (256 pages × 4KB = 1MB)", Style::default().fg(Color::White)),
+        Span::styled("Memory Map (256 pages x 4KB = 1MB)", Style::default().fg(Color::White)),
     ]));
     lines.push(Line::from(""));
 

@@ -382,7 +382,7 @@ impl Shell {
                 match kernel.dispatch(Syscall::ListProcesses) {
                     SyscallResult::Str(s) => {
                         self.push_output("PID  NAME             STATE       PRI  CPU");
-                        self.push_output("───  ───────────────  ──────────  ───  ───");
+                        self.push_output("---  ---------------  ----------  ---  ---");
                         for line in s.lines() {
                             self.push_output(line);
                         }

@@ -63,13 +63,13 @@ pub fn render_process_view(f: &mut Frame, area: Rect, kernel: &Kernel) {
         let name = kernel.processes.get(pid)
             .map(|p| p.name.as_str())
             .unwrap_or("?");
-        format!("★ {}:{}", pid, name)
+        format!("* {}:{}", pid, name)
     }).unwrap_or_else(|| "idle".to_string());
 
     let queue_text = if ready_queue.is_empty() {
         "(empty)".to_string()
     } else {
-        ready_queue.join(" → ")
+        ready_queue.join(" -> ")
     };
 
     let queue_lines = vec![

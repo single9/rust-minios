@@ -139,7 +139,7 @@ impl Kernel {
                 let procs = self.processes.list();
                 let mut output = String::new();
                 for p in &procs {
-                    output.push_str(&format!("PID={} NAME={} STATE={} PRI={} CPU={}\n",
+                    output.push_str(&format!("{:<3}  {:<15}  {:<10}  {:<3}  {}\n",
                         p.pid, p.name, p.state, p.priority, p.cpu_time));
                 }
                 SyscallResult::Str(output)

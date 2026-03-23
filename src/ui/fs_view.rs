@@ -34,7 +34,7 @@ pub fn render_fs_view(f: &mut Frame, area: Rect, fs: &FileSystem, state: &mut Fs
         .enumerate()
         .map(|(i, &line)| {
             if i + state.scroll == state.selected {
-                format!("▶ {}", line)
+                format!("> {}", line)
             } else {
                 format!("  {}", line)
             }
