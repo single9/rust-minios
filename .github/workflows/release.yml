@@ -1,0 +1,160 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version bump type
+        required: true
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  prepare:
+    name: Prepare release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install git-cliff
+        uses: taiki-e/install-action@v2
+        with:
+          tool: git-cliff
+
+      - name: Get version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VER=$(git-cliff --bump ${{ inputs.bump }} --bumped-version)
+            echo "version=v$VER" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ── Version bump (workflow_dispatch only) ──
+      - name: Configure git
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump Cargo.toml and generate changelog
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          sed -i "s/^version = \".*\"/version = \"${VERSION#v}\"/" Cargo.toml
+          git-cliff --tag "$VERSION" --output CHANGELOG.md
+          git add Cargo.toml CHANGELOG.md
+          git commit -m "chore(release): $VERSION"
+          git tag "$VERSION"
+          git push
+          git push --tags
+
+      # ── Generate changelog for release notes ──
+      - name: Generate changelog
+        run: |
+          git-cliff --tag "${{ steps.version.outputs.version }}" --output CHANGELOG.md
+
+      - name: Upload changelog
+        uses: actions/upload-artifact@v4
+        with:
+          name: changelog
+          path: CHANGELOG.md
+
+  build:
+    name: Build (${{ matrix.target }})
+    needs: prepare
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-linux
+          - os: macos-13
+            target: x86_64-macos
+          - os: macos-latest
+            target: aarch64-macos
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Restore cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-release-${{ hashFiles('Cargo.lock') }}
+
+      - name: Build release binary
+        run: cargo build --release
+
+      - name: Package artifacts
+        run: |
+          VERSION="${{ needs.prepare.outputs.version }}"
+          TARGET="${{ matrix.target }}"
+          mkdir -p dist
+          cp target/release/rust-minios dist/
+          cp README.md dist/
+          cp -r docs dist/docs
+          cd dist
+          tar czf "../rust-minios-${VERSION}-${TARGET}.tar.gz" rust-minios README.md docs
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifact-${{ matrix.target }}
+          path: rust-minios-${{ needs.prepare.outputs.version }}-${{ matrix.target }}.tar.gz
+
+  release:
+    name: Create release
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download changelog
+        uses: actions/download-artifact@v4
+        with:
+          name: changelog
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: artifact-*
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -la
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.version }}
+          name: Release ${{ needs.prepare.outputs.version }}
+          body_path: CHANGELOG.md
+          files: |
+            rust-minios-*.tar.gz
+          draft: false
+          prerelease: false
