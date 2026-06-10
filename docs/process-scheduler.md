@@ -15,13 +15,14 @@
 
 ```rust
 pub struct Process {
-    pub pid:          u32,          // 程序識別碼（唯一）
-    pub name:         String,       // 程序名稱（如 "shell", "init"）
-    pub state:        ProcessState, // 當前狀態
-    pub priority:     u8,           // 優先權 0~10（10 最高）
-    pub cpu_time:     u64,          // 累計使用 CPU 的 tick 數
-    pub memory_pages: Vec<u32>,     // 擁有的記憶體分頁起始頁碼
-    pub created_at:   u64,          // 建立時的系統 tick
+    pub pid:            u32,                    // 程序識別碼（唯一）
+    pub name:           String,                 // 程序名稱（如 "shell", "init"）
+    pub state:          ProcessState,           // 當前狀態
+    pub priority:       u8,                     // 優先權 0~10（10 最高）
+    pub cpu_time:       u64,                    // 累計使用 CPU 的 tick 數
+    pub memory_pages:   Vec<u32>,               // 擁有的記憶體分頁起始頁碼
+    pub created_at:     u64,                    // 建立時的系統 tick
+    pub state_history:  VecDeque<ProcessState>, // 最近 40 tick 的狀態記錄
 }
 ```
 
@@ -146,25 +147,81 @@ tick() {
 | 1 | init | Ready | 8 | 系統初始化程序 |
 | 2 | shell | Ready | 5 | 使用者 Shell |
 
+## 狀態歷史追蹤
+
+每個程序會自動記錄最近 40 tick 的狀態變化，用於 Gantt Chart 視覺化：
+
+```rust
+// Process::record_state() 每 tick 被呼叫一次
+pub fn record_state(&mut self) {
+    self.state_history.push_back(self.state.clone());
+    if self.state_history.len() > 40 {
+        self.state_history.pop_front();
+    }
+}
+```
+
+每次 `kernel.tick()` 執行完排程後，`processes.record_all_states()` 會遍歷所有程序、記錄當前狀態。
+
 ## TUI 視覺化
 
-程序視圖（F3）顯示：
+程序視圖（F3）分為四個區塊：
+
+### 1. 程序表 (Process Table)
 
 ```
-┌─ 程序排程器 ────────────────────────────────────────┐
-│  PID  NAME    STATE    PRI  CPU TIME  MEMORY        │
-│  ─────────────────────────────────────────────────  │
-│  0    kernel  Running   10   1523     16KB          │  ← 綠色
-│  1    init    Ready      8    340      8KB          │  ← 黃色
-│  2    shell   Ready      5    218      8KB          │  ← 黃色
-│                                                      │
-│  就緒佇列: [init] → [shell]                          │
-│  Blocked:  (empty)                                   │
-│  Scheduler Tick: 1523                                │
-└──────────────────────────────────────────────────────┘
+┌─ Process Table ──────────────────────────────────────────┐
+│  PID  NAME      STATE      PRI  CPU TIME  MEMORY         │
+│  ───  ────────  ─────────  ───  ────────  ──────         │
+│    0  kernel    Running     10     1523    16KB           │  ← 綠色
+│    1  init      Ready        8      340     8KB           │  ← 黃色
+│    2  shell     Ready        5      218     8KB           │  ← 黃色
+│    3  myapp     Blocked      5        8     16KB          │  ← 紅色
+└──────────────────────────────────────────────────────────┘
 ```
 
-顏色代碼：
+### 2. 視覺化排程器 (Visual Scheduler)
+
+```
+┌─ Running: kernel (PID=0) ┐  ┌─ Ready Queue ───────────────┐
+│ ████████░░░░  7/10       │  │  init:1   shell:2           │
+└───────────────────────────┘  └────────────────────────────┘
+```
+
+- **左半**：目前執行中程序的 Quantum 進度條，依剩餘比例變色（綠→黃→紅）
+- **右半**：就緒佇列以黃底灰字方塊並排顯示
+
+### 3. Gantt Chart（狀態歷史時間軸）
+
+```
+┌─ Gantt ──────────────────────────────────────────────────┐
+│ State History (last 40 ticks):                            │
+│  init     ▓▓▓▓▓▓▓▓▓▓▓▓▓▓██████████████████████████        │
+│  shell    ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓        │
+│                                                           │
+│  █ Running  ▓ Ready  ▒ Blocked  ░ Terminated  · New       │
+└───────────────────────────────────────────────────────────┘
+```
+
+每個程序一列，以彩色區塊字元顯示最近 40 tick 的狀態變化：
+
+| 字元 | 顏色 | 狀態 |
+|------|------|------|
+| `█` | 🟢 綠色 | Running |
+| `▓` | 🟡 黃色 | Ready |
+| `▒` | 🔴 紅色 | Blocked |
+| `░` | ⬜ 灰色 | Terminated |
+| `·` | 🔵 青色 | New |
+
+### 4. Stats
+
+```
+┌─ Stats ──────────────────────────────────────────────────┐
+│  System tick: 1523 | Processes: 4 | Blocked: 1           │
+└──────────────────────────────────────────────────────────┘
+```
+
+### 顏色代碼
 - 🟢 綠色 = Running
 - 🟡 黃色 = Ready
 - 🔴 紅色 = Blocked

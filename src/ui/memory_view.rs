@@ -1,7 +1,7 @@
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Style},
+    style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
 };
@@ -45,18 +45,16 @@ pub fn render_memory_view(f: &mut Frame, area: Rect, memory: &MemoryManager) {
 
     // Stats
     let stats = memory.get_stats();
-    let legend_text = format!(
-        "  {} Free ({} KB)   {} Kernel ({} KB)   {} Process ({} KB)   {} Reserved ({} KB)\n  Total: {} KB | Used: {} KB | Free: {} KB",
-        "██", stats.free * 4,
-        "██", stats.used_kernel * 4,
-        "██", stats.used_process * 4,
-        "██", stats.reserved * 4,
-        stats.total * 4,
-        (stats.used_kernel + stats.used_process + stats.reserved) * 4,
-        stats.free * 4,
-    );
+    let (frag_ratio, max_free, _) = memory.get_fragmentation();
+    let frag_pct = (frag_ratio * 100.0) as u8;
+    let total_kb = stats.total * 4;
+    let used_kb = (stats.used_kernel + stats.used_process) * 4;
+    let frag_color = if frag_pct > 70 { Color::Red }
+                     else if frag_pct > 30 { Color::Yellow }
+                     else { Color::Green };
 
     let legend_lines: Vec<Line> = vec![
+        Line::from(""),
         Line::from(vec![
             Span::styled("  ██", Style::default().fg(Color::DarkGray)),
             Span::raw(format!(" Free ({} KB)   ", stats.free * 4)),
@@ -69,12 +67,15 @@ pub fn render_memory_view(f: &mut Frame, area: Rect, memory: &MemoryManager) {
         ]),
         Line::from(format!(
             "  Total: {} KB | Used: {} KB | Free: {} KB",
-            stats.total * 4,
-            (stats.used_kernel + stats.used_process + stats.reserved) * 4,
-            stats.free * 4,
+            total_kb, used_kb, stats.free * 4,
         )),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("  Fragmentation: ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+            Span::styled(format!("{}%", frag_pct), Style::default().fg(frag_color)),
+            Span::raw(format!("  (largest free block: {} KB)", max_free * 4)),
+        ]),
     ];
-    let _ = legend_text; // suppress unused warning
 
     let legend_widget = Paragraph::new(legend_lines)
         .block(Block::default().borders(Borders::ALL).title(" Legend "));

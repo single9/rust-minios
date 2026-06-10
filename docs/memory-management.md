@@ -100,6 +100,18 @@ pub struct MemStats {
 }
 ```
 
+## 碎片化計算
+
+```rust
+pub fn get_fragmentation(&self) -> (f64, usize, usize)
+```
+
+回傳 `(碎片化比率, 最大連續空閒區塊頁數, 總空閒頁數)`。
+
+**碎片化比率** = `1.0 - (最大連續空閒區塊 / 總空閒頁數)`
+- 0.0 = 完全連續（零碎片化）
+- 接近 1.0 = 高度碎片化（許多小碎片）
+
 Shell 指令 `free` 會顯示：
 ```
 Total: 1024KB | Kernel: 64KB | Process: 32KB | Free: 928KB | Reserved: 0KB
@@ -117,7 +129,12 @@ Total: 1024KB | Kernel: 64KB | Process: 32KB | Free: 928KB | Reserved: 0KB
 ...
 
 Legend: ██ Kernel  ▓▓ Process  ░░ Free
+Fragmentation: 12% (largest free block: 848 KB)
 ```
+
+下方統計區塊新增 **碎片化指標**：
+- 顯示碎片化百分比（依嚴重程度變色：綠 <30% / 黃 30-70% / 紅 >70%）
+- 顯示最大連續可用區塊大小（KB）
 
 ## 與真實 OS 的對比
 

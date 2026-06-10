@@ -75,6 +75,27 @@ impl MemoryManager {
         }
     }
 
+    pub fn get_fragmentation(&self) -> (f64, usize, usize) {
+        let stats = self.get_stats();
+        let total_free = stats.free;
+        if total_free == 0 {
+            return (0.0, 0, 0);
+        }
+        let mut max_free_block = 0usize;
+        let mut current_run = 0usize;
+        for page in &self.pages {
+            if page.owner == PageOwner::Free {
+                current_run += 1;
+            } else {
+                max_free_block = max_free_block.max(current_run);
+                current_run = 0;
+            }
+        }
+        max_free_block = max_free_block.max(current_run);
+        let ratio = 1.0 - (max_free_block as f64 / total_free as f64);
+        (ratio, max_free_block, total_free)
+    }
+
     pub fn get_stats(&self) -> MemStats {
         let mut used_kernel = 0;
         let mut used_process = 0;

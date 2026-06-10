@@ -100,6 +100,7 @@ impl Kernel {
     pub fn tick(&mut self) {
         self.tick += 1;
         self.scheduler.tick(&mut self.processes);
+        self.processes.record_all_states();
     }
 
     pub fn dispatch(&mut self, syscall: Syscall) -> SyscallResult {

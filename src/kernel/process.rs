@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ProcessState {
@@ -30,6 +30,16 @@ pub struct Process {
     pub cpu_time: u64,
     pub memory_pages: Vec<u32>,
     pub created_at: u64,
+    pub state_history: VecDeque<ProcessState>,
+}
+
+impl Process {
+    pub fn record_state(&mut self) {
+        self.state_history.push_back(self.state.clone());
+        if self.state_history.len() > 40 {
+            self.state_history.pop_front();
+        }
+    }
 }
 
 pub struct ProcessTable {
@@ -48,6 +58,8 @@ impl ProcessTable {
     pub fn create(&mut self, name: &str, priority: u8) -> u32 {
         let pid = self.next_pid;
         self.next_pid += 1;
+        let mut state_history = VecDeque::new();
+        state_history.push_back(ProcessState::New);
         self.processes.insert(pid, Process {
             pid,
             name: name.to_string(),
@@ -56,6 +68,7 @@ impl ProcessTable {
             cpu_time: 0,
             memory_pages: Vec::new(),
             created_at: 0,
+            state_history,
         });
         pid
     }
@@ -71,6 +84,12 @@ impl ProcessTable {
     pub fn set_state(&mut self, pid: u32, state: ProcessState) {
         if let Some(p) = self.processes.get_mut(&pid) {
             p.state = state;
+        }
+    }
+
+    pub fn record_all_states(&mut self) {
+        for (_, p) in &mut self.processes {
+            p.record_state();
         }
     }
 

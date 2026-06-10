@@ -3,7 +3,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph, Tabs},
+    widgets::{Block, Borders, Gauge, Paragraph, Tabs},
 };
 use crate::ui::{App, AppMode};
 
@@ -73,12 +73,21 @@ fn render_dashboard_content(f: &mut Frame, area: Rect, app: &App) {
     f.render_widget(boot_widget, chunks[0]);
 
     // Stats panel
+    let right_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(0), Constraint::Length(3)])
+        .split(chunks[1]);
+
     let stats = app.kernel.memory.get_stats();
     let proc_count = app.kernel.processes.list().len();
     let running = app.kernel.scheduler.current
         .and_then(|pid| app.kernel.processes.get(pid))
         .map(|p| p.name.as_str())
         .unwrap_or("idle");
+
+    let total_kb = stats.total * 4;
+    let used_kb = (stats.used_kernel + stats.used_process) * 4;
+    let used_pct = if total_kb > 0 { (used_kb * 100) / total_kb } else { 0 };
 
     let stat_lines = vec![
         Line::from(vec![
@@ -89,9 +98,7 @@ fn render_dashboard_content(f: &mut Frame, area: Rect, app: &App) {
         Line::from(vec![
             Span::styled("Memory:", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
         ]),
-        Line::from(format!("  Total:   {} KB", stats.total * 4)),
-        Line::from(format!("  Used:    {} KB", (stats.used_kernel + stats.used_process) * 4)),
-        Line::from(format!("  Free:    {} KB", stats.free * 4)),
+        Line::from(format!("  Total: {} KB | Free: {} KB", total_kb, stats.free * 4)),
         Line::from(""),
         Line::from(vec![
             Span::styled("Processes:", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
@@ -110,7 +117,18 @@ fn render_dashboard_content(f: &mut Frame, area: Rect, app: &App) {
 
     let stats_widget = Paragraph::new(stat_lines)
         .block(Block::bordered().title(" System Stats "));
-    f.render_widget(stats_widget, chunks[1]);
+    f.render_widget(stats_widget, right_chunks[0]);
+
+    // Memory usage gauge
+    let gauge_color = if used_pct > 80 { Color::Red }
+                      else if used_pct > 50 { Color::Yellow }
+                      else { Color::Green };
+    let gauge = Gauge::default()
+        .block(Block::bordered().title(" Memory Usage "))
+        .gauge_style(Style::default().fg(gauge_color))
+        .percent(used_pct as u16)
+        .label(format!("{} KB / {} KB ({}%)", used_kb, total_kb, used_pct));
+    f.render_widget(gauge, right_chunks[1]);
 }
 
 fn render_shell_view(f: &mut Frame, area: Rect, app: &mut App) {
