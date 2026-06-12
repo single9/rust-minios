@@ -1,19 +1,21 @@
+pub mod fs;
+pub mod io;
 pub mod memory;
 pub mod process;
 pub mod scheduler;
-pub mod fs;
-pub mod io;
 pub mod syscall;
 
-use memory::{MemoryManager, PageOwner};
-use process::{ProcessTable, ProcessState};
-use scheduler::Scheduler;
 use fs::FileSystem;
 use io::IoSubsystem;
+use memory::{MemoryManager, PageOwner};
+use process::{ProcessState, ProcessTable};
+use scheduler::Scheduler;
 pub use syscall::{Syscall, SyscallResult};
 
 pub struct KernelConfig {
+    #[expect(dead_code)]
     pub tick_rate_ms: u64,
+    #[expect(dead_code)]
     pub version: String,
 }
 
@@ -22,9 +24,11 @@ pub struct Kernel {
     pub processes: ProcessTable,
     pub scheduler: Scheduler,
     pub fs: FileSystem,
+    #[expect(dead_code)]
     pub io: IoSubsystem,
     pub tick: u64,
     pub boot_messages: Vec<String>,
+    #[expect(dead_code)]
     pub config: KernelConfig,
 }
 
@@ -42,30 +46,30 @@ impl Kernel {
         scheduler.current = Some(kernel_pid);
 
         // Allocate memory for kernel process
-        if let Some(start) = memory.allocate_pages(PageOwner::Process(kernel_pid), 4) {
-            if let Some(p) = processes.get_mut(kernel_pid) {
-                p.memory_pages = vec![start as u32];
-            }
+        if let Some(start) = memory.allocate_pages(PageOwner::Process(kernel_pid), 4)
+            && let Some(p) = processes.get_mut(kernel_pid)
+        {
+            p.memory_pages = vec![start as u32];
         }
 
         // Create init (pid=1)
         let init_pid = processes.create("init", 8);
         processes.set_state(init_pid, ProcessState::Ready);
         scheduler.add_process(init_pid);
-        if let Some(start) = memory.allocate_pages(PageOwner::Process(init_pid), 2) {
-            if let Some(p) = processes.get_mut(init_pid) {
-                p.memory_pages = vec![start as u32];
-            }
+        if let Some(start) = memory.allocate_pages(PageOwner::Process(init_pid), 2)
+            && let Some(p) = processes.get_mut(init_pid)
+        {
+            p.memory_pages = vec![start as u32];
         }
 
         // Create shell (pid=2)
         let shell_pid = processes.create("shell", 5);
         processes.set_state(shell_pid, ProcessState::Ready);
         scheduler.add_process(shell_pid);
-        if let Some(start) = memory.allocate_pages(PageOwner::Process(shell_pid), 2) {
-            if let Some(p) = processes.get_mut(shell_pid) {
-                p.memory_pages = vec![start as u32];
-            }
+        if let Some(start) = memory.allocate_pages(PageOwner::Process(shell_pid), 2)
+            && let Some(p) = processes.get_mut(shell_pid)
+        {
+            p.memory_pages = vec![start as u32];
         }
 
         let boot_messages = vec![
@@ -109,10 +113,10 @@ impl Kernel {
                 let pid = self.processes.create(&name, priority);
                 self.scheduler.add_process(pid);
                 self.processes.set_state(pid, ProcessState::Ready);
-                if let Some(start) = self.memory.allocate_pages(PageOwner::Process(pid), 4) {
-                    if let Some(p) = self.processes.get_mut(pid) {
-                        p.memory_pages = vec![start as u32];
-                    }
+                if let Some(start) = self.memory.allocate_pages(PageOwner::Process(pid), 4)
+                    && let Some(p) = self.processes.get_mut(pid)
+                {
+                    p.memory_pages = vec![start as u32];
                 }
                 SyscallResult::Value(pid as i64)
             }
@@ -140,15 +144,20 @@ impl Kernel {
                 let procs = self.processes.list();
                 let mut output = String::new();
                 for p in &procs {
-                    output.push_str(&format!("{:<3}  {:<15}  {:<10}  {:<3}  {}\n",
-                        p.pid, p.name, p.state, p.priority, p.cpu_time));
+                    output.push_str(&format!(
+                        "{:<3}  {:<15}  {:<10}  {:<3}  {}\n",
+                        p.pid, p.name, p.state, p.priority, p.cpu_time
+                    ));
                 }
                 SyscallResult::Str(output)
             }
             Syscall::Malloc { size } => {
-                let pages_needed = (size + 4095) / 4096;
+                let pages_needed = size.div_ceil(4096);
                 let pages_needed = pages_needed.max(1);
-                match self.memory.allocate_pages(PageOwner::Process(999), pages_needed) {
+                match self
+                    .memory
+                    .allocate_pages(PageOwner::Process(999), pages_needed)
+                {
                     Some(start) => SyscallResult::Value(start as i64),
                     None => SyscallResult::Err("Out of memory".to_string()),
                 }
@@ -169,18 +178,14 @@ impl Kernel {
                 );
                 SyscallResult::Str(output)
             }
-            Syscall::Open { path } => {
-                match self.fs.resolve_path(&path) {
-                    Some(_) => SyscallResult::Success,
-                    None => SyscallResult::Err(format!("No such file: {}", path)),
-                }
-            }
-            Syscall::Read { path } => {
-                match self.fs.read_file(&path) {
-                    Some(content) => SyscallResult::Str(content),
-                    None => SyscallResult::Err(format!("Cannot read: {}", path)),
-                }
-            }
+            Syscall::Open { path } => match self.fs.resolve_path(&path) {
+                Some(_) => SyscallResult::Success,
+                None => SyscallResult::Err(format!("No such file: {}", path)),
+            },
+            Syscall::Read { path } => match self.fs.read_file(&path) {
+                Some(content) => SyscallResult::Str(content),
+                None => SyscallResult::Err(format!("Cannot read: {}", path)),
+            },
             Syscall::Write { path, content } => {
                 if self.fs.write_file(&path, &content) {
                     SyscallResult::Success
@@ -213,9 +218,7 @@ impl Kernel {
                 let entries = self.fs.list_dir(&path);
                 SyscallResult::Str(entries.join("\n"))
             }
-            Syscall::GetTree => {
-                SyscallResult::Str(self.fs.get_tree())
-            }
+            Syscall::GetTree => SyscallResult::Str(self.fs.get_tree()),
         }
     }
 }

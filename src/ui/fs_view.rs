@@ -1,9 +1,9 @@
+use crate::kernel::fs::FileSystem;
 use ratatui::{
     Frame,
     layout::Rect,
     widgets::{Block, Borders, Paragraph},
 };
-use crate::kernel::fs::FileSystem;
 
 pub struct FsViewState {
     pub selected: usize,
@@ -12,7 +12,10 @@ pub struct FsViewState {
 
 impl FsViewState {
     pub fn new() -> Self {
-        FsViewState { selected: 0, scroll: 0 }
+        FsViewState {
+            selected: 0,
+            scroll: 0,
+        }
     }
 }
 
@@ -42,8 +45,11 @@ pub fn render_fs_view(f: &mut Frame, area: Rect, fs: &FileSystem, state: &mut Fs
         .collect();
 
     let text = display_lines.join("\n");
-    let widget = Paragraph::new(text)
-        .block(Block::default().borders(Borders::ALL).title(" File System Browser "));
+    let widget = Paragraph::new(text).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title(" File System Browser "),
+    );
     f.render_widget(widget, area);
 
     let _ = state; // used mutably above

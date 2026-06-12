@@ -1,3 +1,4 @@
+use crate::ui::{App, AppMode};
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
@@ -5,7 +6,6 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, Gauge, Paragraph, Tabs},
 };
-use crate::ui::{App, AppMode};
 
 pub fn render_dashboard(f: &mut Frame, app: &mut App) {
     let area = f.area();
@@ -53,8 +53,16 @@ fn render_tabs(f: &mut Frame, area: Rect, mode: &AppMode) {
     let tabs = Tabs::new(titles)
         .select(selected)
         .style(Style::default().fg(Color::White))
-        .highlight_style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))
-        .block(Block::default().borders(Borders::ALL).title(" rust-minios "));
+        .highlight_style(
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" rust-minios "),
+        );
     f.render_widget(tabs, area);
 }
 
@@ -65,11 +73,13 @@ fn render_dashboard_content(f: &mut Frame, area: Rect, app: &App) {
         .split(area);
 
     // Boot messages
-    let boot_text: Vec<Line> = app.kernel.boot_messages.iter()
+    let boot_text: Vec<Line> = app
+        .kernel
+        .boot_messages
+        .iter()
         .map(|s| Line::from(Span::styled(s.as_str(), Style::default().fg(Color::Green))))
         .collect();
-    let boot_widget = Paragraph::new(boot_text)
-        .block(Block::bordered().title(" Boot Log "));
+    let boot_widget = Paragraph::new(boot_text).block(Block::bordered().title(" Boot Log "));
     f.render_widget(boot_widget, chunks[0]);
 
     // Stats panel
@@ -80,14 +90,21 @@ fn render_dashboard_content(f: &mut Frame, area: Rect, app: &App) {
 
     let stats = app.kernel.memory.get_stats();
     let proc_count = app.kernel.processes.list().len();
-    let running = app.kernel.scheduler.current
+    let running = app
+        .kernel
+        .scheduler
+        .current
         .and_then(|pid| app.kernel.processes.get(pid))
         .map(|p| p.name.as_str())
         .unwrap_or("idle");
 
     let total_kb = stats.total * 4;
     let used_kb = (stats.used_kernel + stats.used_process) * 4;
-    let used_pct = if total_kb > 0 { (used_kb * 100) / total_kb } else { 0 };
+    let used_pct = if total_kb > 0 {
+        (used_kb * 100) / total_kb
+    } else {
+        0
+    };
 
     let stat_lines = vec![
         Line::from(vec![
@@ -95,34 +112,50 @@ fn render_dashboard_content(f: &mut Frame, area: Rect, app: &App) {
             Span::raw(app.kernel.tick.to_string()),
         ]),
         Line::from(""),
-        Line::from(vec![
-            Span::styled("Memory:", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-        ]),
-        Line::from(format!("  Total: {} KB | Free: {} KB", total_kb, stats.free * 4)),
+        Line::from(vec![Span::styled(
+            "Memory:",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )]),
+        Line::from(format!(
+            "  Total: {} KB | Free: {} KB",
+            total_kb,
+            stats.free * 4
+        )),
         Line::from(""),
-        Line::from(vec![
-            Span::styled("Processes:", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-        ]),
+        Line::from(vec![Span::styled(
+            "Processes:",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )]),
         Line::from(format!("  Total:   {}", proc_count)),
         Line::from(format!("  Running: {}", running)),
         Line::from(format!("  Blocked: {}", app.kernel.scheduler.blocked.len())),
         Line::from(""),
-        Line::from(vec![
-            Span::styled("Controls:", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-        ]),
+        Line::from(vec![Span::styled(
+            "Controls:",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )]),
         Line::from("  F1-F6: Switch views"),
         Line::from("  q: Quit (Dashboard)"),
         Line::from("  Ctrl+C: Force quit"),
     ];
 
-    let stats_widget = Paragraph::new(stat_lines)
-        .block(Block::bordered().title(" System Stats "));
+    let stats_widget = Paragraph::new(stat_lines).block(Block::bordered().title(" System Stats "));
     f.render_widget(stats_widget, right_chunks[0]);
 
     // Memory usage gauge
-    let gauge_color = if used_pct > 80 { Color::Red }
-                      else if used_pct > 50 { Color::Yellow }
-                      else { Color::Green };
+    let gauge_color = if used_pct > 80 {
+        Color::Red
+    } else if used_pct > 50 {
+        Color::Yellow
+    } else {
+        Color::Green
+    };
     let gauge = Gauge::default()
         .block(Block::bordered().title(" Memory Usage "))
         .gauge_style(Style::default().fg(gauge_color))
@@ -149,21 +182,25 @@ fn render_shell_view(f: &mut Frame, area: Rect, app: &mut App) {
         .map(|s| Line::from(s.as_str()))
         .collect();
 
-    let output_widget = Paragraph::new(output_text)
-        .block(Block::bordered().title(" Shell (Up/Down: scroll) "));
+    let output_widget =
+        Paragraph::new(output_text).block(Block::bordered().title(" Shell (Up/Down: scroll) "));
     f.render_widget(output_widget, chunks[0]);
 
     // Input line
     let input_line = format!("{}$ {}", app.shell.cwd, app.shell.current_input);
-    let input_widget = Paragraph::new(input_line)
-        .block(Block::default().borders(Borders::ALL).title(" Input "));
+    let input_widget =
+        Paragraph::new(input_line).block(Block::default().borders(Borders::ALL).title(" Input "));
     f.render_widget(input_widget, chunks[1]);
 }
 
 fn render_editor_view(f: &mut Frame, area: Rect, app: &mut App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(3), Constraint::Length(1), Constraint::Length(1)])
+        .constraints([
+            Constraint::Min(3),
+            Constraint::Length(1),
+            Constraint::Length(1),
+        ])
         .split(area);
 
     let line_num_width: u16 = 5; // "NNNN " = 5 chars
@@ -176,7 +213,8 @@ fn render_editor_view(f: &mut Frame, area: Rect, app: &mut App) {
     let start_row = editor.scroll_offset;
     let start_col = editor.scroll_col;
 
-    let lines: Vec<Line> = editor.lines
+    let lines: Vec<Line> = editor
+        .lines
         .iter()
         .enumerate()
         .skip(start_row)
@@ -205,13 +243,12 @@ fn render_editor_view(f: &mut Frame, area: Rect, app: &mut App) {
         format!(" Editor: {} ", fname)
     };
 
-    let editor_widget = Paragraph::new(lines)
-        .block(Block::bordered().title(title));
+    let editor_widget = Paragraph::new(lines).block(Block::bordered().title(title));
     f.render_widget(editor_widget, chunks[0]);
 
     // Status bar
     let status = editor.status_bar_text();
-    let status_widget = Paragraph::new(status)
-        .style(Style::default().bg(Color::DarkGray).fg(Color::White));
+    let status_widget =
+        Paragraph::new(status).style(Style::default().bg(Color::DarkGray).fg(Color::White));
     f.render_widget(status_widget, chunks[1]);
 }

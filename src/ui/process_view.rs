@@ -1,3 +1,5 @@
+use crate::kernel::Kernel;
+use crate::kernel::process::ProcessState;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
@@ -5,8 +7,6 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, Cell, Gauge, Paragraph, Row, Table},
 };
-use crate::kernel::Kernel;
-use crate::kernel::process::ProcessState;
 
 pub fn render_process_view(f: &mut Frame, area: Rect, kernel: &Kernel) {
     let chunks = Layout::default()
@@ -21,35 +21,46 @@ pub fn render_process_view(f: &mut Frame, area: Rect, kernel: &Kernel) {
 
     // ── Process table ──
     let processes = kernel.processes.list();
-    let rows: Vec<Row> = processes.iter().map(|p| {
-        let state_color = match p.state {
-            ProcessState::Running => Color::Green,
-            ProcessState::Ready => Color::Yellow,
-            ProcessState::Blocked => Color::Red,
-            ProcessState::Terminated => Color::DarkGray,
-            ProcessState::New => Color::Cyan,
-        };
-        let mem_kb: u32 = p.memory_pages.len() as u32 * 4;
-        Row::new(vec![
-            Cell::from(p.pid.to_string()),
-            Cell::from(p.name.clone()),
-            Cell::from(p.state.to_string()).style(Style::default().fg(state_color)),
-            Cell::from(p.priority.to_string()),
-            Cell::from(p.cpu_time.to_string()),
-            Cell::from(format!("{} KB", mem_kb)),
-        ])
-    }).collect();
+    let rows: Vec<Row> = processes
+        .iter()
+        .map(|p| {
+            let state_color = match p.state {
+                ProcessState::Running => Color::Green,
+                ProcessState::Ready => Color::Yellow,
+                ProcessState::Blocked => Color::Red,
+                ProcessState::Terminated => Color::DarkGray,
+                ProcessState::New => Color::Cyan,
+            };
+            let mem_kb: u32 = p.memory_pages.len() as u32 * 4;
+            Row::new(vec![
+                Cell::from(p.pid.to_string()),
+                Cell::from(p.name.clone()),
+                Cell::from(p.state.to_string()).style(Style::default().fg(state_color)),
+                Cell::from(p.priority.to_string()),
+                Cell::from(p.cpu_time.to_string()),
+                Cell::from(format!("{} KB", mem_kb)),
+            ])
+        })
+        .collect();
 
-    let table = Table::new(rows, [
-        Constraint::Length(5),
-        Constraint::Length(15),
-        Constraint::Length(12),
-        Constraint::Length(5),
-        Constraint::Length(10),
-        Constraint::Length(10),
-    ])
-    .header(Row::new(vec!["PID", "NAME", "STATE", "PRI", "CPU TIME", "MEMORY"])
-        .style(Style::default().add_modifier(Modifier::BOLD).fg(Color::Cyan)))
+    let table = Table::new(
+        rows,
+        [
+            Constraint::Length(5),
+            Constraint::Length(15),
+            Constraint::Length(12),
+            Constraint::Length(5),
+            Constraint::Length(10),
+            Constraint::Length(10),
+        ],
+    )
+    .header(
+        Row::new(vec!["PID", "NAME", "STATE", "PRI", "CPU TIME", "MEMORY"]).style(
+            Style::default()
+                .add_modifier(Modifier::BOLD)
+                .fg(Color::Cyan),
+        ),
+    )
     .block(Block::bordered().title(" Process Table "));
 
     f.render_widget(table, chunks[0]);
@@ -82,15 +93,25 @@ pub fn render_process_view(f: &mut Frame, area: Rect, kernel: &Kernel) {
 
 fn render_running_box(f: &mut Frame, area: Rect, kernel: &Kernel) {
     let current_pid = kernel.scheduler.current;
-    let (name, pid_str, quantum, time_quantum) = match current_pid.and_then(|pid| kernel.processes.get(pid)) {
-        Some(p) => (p.name.clone(), p.pid.to_string(), kernel.scheduler.current_quantum, kernel.scheduler.time_quantum),
-        None => ("idle".to_string(), "-".to_string(), 0, 1),
-    };
+    let (name, pid_str, quantum, time_quantum) =
+        match current_pid.and_then(|pid| kernel.processes.get(pid)) {
+            Some(p) => (
+                p.name.clone(),
+                p.pid.to_string(),
+                kernel.scheduler.current_quantum,
+                kernel.scheduler.time_quantum,
+            ),
+            None => ("idle".to_string(), "-".to_string(), 0, 1),
+        };
 
     let ratio = quantum as f64 / time_quantum as f64;
-    let gauge_color = if ratio > 0.7 { Color::Red }
-                      else if ratio > 0.4 { Color::Yellow }
-                      else { Color::Green };
+    let gauge_color = if ratio > 0.7 {
+        Color::Red
+    } else if ratio > 0.4 {
+        Color::Yellow
+    } else {
+        Color::Green
+    };
 
     let inner = Layout::default()
         .direction(Direction::Vertical)
@@ -110,10 +131,11 @@ fn render_running_box(f: &mut Frame, area: Rect, kernel: &Kernel) {
 fn render_ready_queue(f: &mut Frame, area: Rect, kernel: &Kernel) {
     let mut lines: Vec<Line> = Vec::new();
 
-    let queue: Vec<(u32, String)> = kernel.scheduler.ready_queue.iter()
-        .filter_map(|&pid| {
-            kernel.processes.get(pid).map(|p| (pid, p.name.clone()))
-        })
+    let queue: Vec<(u32, String)> = kernel
+        .scheduler
+        .ready_queue
+        .iter()
+        .filter_map(|&pid| kernel.processes.get(pid).map(|p| (pid, p.name.clone())))
         .collect();
 
     if queue.is_empty() {
@@ -139,8 +161,7 @@ fn render_ready_queue(f: &mut Frame, area: Rect, kernel: &Kernel) {
         }
     }
 
-    let widget = Paragraph::new(lines)
-        .block(Block::bordered().title(" Ready Queue "));
+    let widget = Paragraph::new(lines).block(Block::bordered().title(" Ready Queue "));
     f.render_widget(widget, area);
 }
 
@@ -151,17 +172,19 @@ fn render_gantt_chart(f: &mut Frame, area: Rect, kernel: &Kernel) {
     // Header
     lines.push(Line::from(Span::styled(
         "State History (last 40 ticks):",
-        Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+        Style::default()
+            .fg(Color::White)
+            .add_modifier(Modifier::BOLD),
     )));
 
     for p in &processes {
-        if p.pid == 0 { continue; } // skip kernel
-        let mut spans: Vec<Span> = vec![
-            Span::styled(
-                format!(" {:<8} ", p.name),
-                Style::default().fg(Color::Cyan),
-            ),
-        ];
+        if p.pid == 0 {
+            continue;
+        } // skip kernel
+        let mut spans: Vec<Span> = vec![Span::styled(
+            format!(" {:<8} ", p.name),
+            Style::default().fg(Color::Cyan),
+        )];
 
         for state in &p.state_history {
             let (color, ch) = match state {
@@ -204,7 +227,6 @@ fn render_gantt_chart(f: &mut Frame, area: Rect, kernel: &Kernel) {
         Span::raw("New"),
     ]));
 
-    let widget = Paragraph::new(lines)
-        .block(Block::bordered().title(" Gantt "));
+    let widget = Paragraph::new(lines).block(Block::bordered().title(" Gantt "));
     f.render_widget(widget, area);
 }

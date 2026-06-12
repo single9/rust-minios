@@ -8,6 +8,7 @@ pub enum InodeType {
 
 #[derive(Clone, Debug)]
 pub struct Inode {
+    #[expect(dead_code)]
     pub id: u32,
     pub name: String,
     pub inode_type: InodeType,
@@ -15,6 +16,7 @@ pub struct Inode {
     pub children: Vec<u32>,
     pub parent: Option<u32>,
     pub size: usize,
+    #[expect(dead_code)]
     pub created_at: u64,
 }
 
@@ -41,10 +43,14 @@ impl FileSystem {
         fs.mkdir_under(0, "dev");
 
         // Create files in /home
-        fs.create_file_with_content("/home/readme.txt", "Welcome to rust-minios!\nA micro OS simulator built in Rust.\n");
+        fs.create_file_with_content(
+            "/home/readme.txt",
+            "Welcome to rust-minios!\nA micro OS simulator built in Rust.\n",
+        );
         fs.create_file_with_content("/home/hello.txt", "Hello, World!\n");
-        fs.create_file_with_content("/home/demo.sh",
-"# demo.sh - rust-minios demo script
+        fs.create_file_with_content(
+            "/home/demo.sh",
+            "# demo.sh - rust-minios demo script
 # Usage: run /home/demo.sh
 
 echo === rust-minios Script Demo ===
@@ -83,7 +89,8 @@ malloc 4096
 free
 
 echo === Demo complete ===
-");
+",
+        );
 
         fs
     }
@@ -91,16 +98,19 @@ echo === Demo complete ===
     fn alloc_inode(&mut self, name: &str, inode_type: InodeType, parent: Option<u32>) -> u32 {
         let id = self.next_inode;
         self.next_inode += 1;
-        self.inodes.insert(id, Inode {
+        self.inodes.insert(
             id,
-            name: name.to_string(),
-            inode_type,
-            content: Vec::new(),
-            children: Vec::new(),
-            parent,
-            size: 0,
-            created_at: 0,
-        });
+            Inode {
+                id,
+                name: name.to_string(),
+                inode_type,
+                content: Vec::new(),
+                children: Vec::new(),
+                parent,
+                size: 0,
+                created_at: 0,
+            },
+        );
         id
     }
 
@@ -136,18 +146,22 @@ echo === Demo complete ===
         if path == "/" {
             return Some(0);
         }
-        let parts: Vec<&str> = path.trim_start_matches('/').split('/').filter(|s| !s.is_empty()).collect();
+        let parts: Vec<&str> = path
+            .trim_start_matches('/')
+            .split('/')
+            .filter(|s| !s.is_empty())
+            .collect();
         let mut current = 0u32;
         for part in parts {
             let inode = self.inodes.get(&current)?;
             let mut found = false;
             for &child_id in &inode.children {
-                if let Some(child) = self.inodes.get(&child_id) {
-                    if child.name == part {
-                        current = child_id;
-                        found = true;
-                        break;
-                    }
+                if let Some(child) = self.inodes.get(&child_id)
+                    && child.name == part
+                {
+                    current = child_id;
+                    found = true;
+                    break;
                 }
             }
             if !found {
@@ -158,21 +172,22 @@ echo === Demo complete ===
     }
 
     pub fn list_dir(&self, path: &str) -> Vec<String> {
-        if let Some(id) = self.resolve_path(path) {
-            if let Some(inode) = self.inodes.get(&id) {
-                if inode.inode_type == InodeType::Directory {
-                    return inode.children.iter()
-                        .filter_map(|&cid| self.inodes.get(&cid))
-                        .map(|c| {
-                            if c.inode_type == InodeType::Directory {
-                                format!("{}/", c.name)
-                            } else {
-                                c.name.clone()
-                            }
-                        })
-                        .collect();
-                }
-            }
+        if let Some(id) = self.resolve_path(path)
+            && let Some(inode) = self.inodes.get(&id)
+            && inode.inode_type == InodeType::Directory
+        {
+            return inode
+                .children
+                .iter()
+                .filter_map(|&cid| self.inodes.get(&cid))
+                .map(|c| {
+                    if c.inode_type == InodeType::Directory {
+                        format!("{}/", c.name)
+                    } else {
+                        c.name.clone()
+                    }
+                })
+                .collect();
         }
         Vec::new()
     }
@@ -188,14 +203,13 @@ echo === Demo complete ===
     }
 
     pub fn write_file(&mut self, path: &str, content: &str) -> bool {
-        if let Some(id) = self.resolve_path(path) {
-            if let Some(inode) = self.inodes.get_mut(&id) {
-                if inode.inode_type == InodeType::File {
-                    inode.content = content.as_bytes().to_vec();
-                    inode.size = content.len();
-                    return true;
-                }
-            }
+        if let Some(id) = self.resolve_path(path)
+            && let Some(inode) = self.inodes.get_mut(&id)
+            && inode.inode_type == InodeType::File
+        {
+            inode.content = content.as_bytes().to_vec();
+            inode.size = content.len();
+            return true;
         }
         false
     }
@@ -233,10 +247,10 @@ echo === Demo complete ===
         }
         if let Some(id) = self.resolve_path(path) {
             let parent_id = self.inodes.get(&id).and_then(|i| i.parent);
-            if let Some(pid) = parent_id {
-                if let Some(parent) = self.inodes.get_mut(&pid) {
-                    parent.children.retain(|&c| c != id);
-                }
+            if let Some(pid) = parent_id
+                && let Some(parent) = self.inodes.get_mut(&pid)
+            {
+                parent.children.retain(|&c| c != id);
             }
             self.inodes.remove(&id);
             true
@@ -268,12 +282,31 @@ echo === Demo complete ===
                 for (i, &child_id) in children.iter().enumerate() {
                     let is_last = i == children.len() - 1;
                     let child_prefix = if id == 0 {
-                        if is_last { "└── ".to_string() } else { "├── ".to_string() }
+                        if is_last {
+                            "└── ".to_string()
+                        } else {
+                            "├── ".to_string()
+                        }
                     } else {
                         let continuation = if is_last { "    " } else { "│   " };
-                        format!("{}{}", 
+                        format!(
+                            "{}{}",
                             prefix.trim_end_matches("└── ").trim_end_matches("├── "),
-                            if is_last { format!("{}└── ", continuation.trim_end_matches("└── ").trim_end_matches("├── ")) } else { format!("{}├── ", continuation.trim_end_matches("└── ").trim_end_matches("├── ")) }
+                            if is_last {
+                                format!(
+                                    "{}└── ",
+                                    continuation
+                                        .trim_end_matches("└── ")
+                                        .trim_end_matches("├── ")
+                                )
+                            } else {
+                                format!(
+                                    "{}├── ",
+                                    continuation
+                                        .trim_end_matches("└── ")
+                                        .trim_end_matches("├── ")
+                                )
+                            }
                         )
                     };
                     self.build_tree(child_id, &child_prefix, result);

@@ -3,6 +3,7 @@ pub enum PageOwner {
     Free,
     Kernel,
     Process(u32),
+    #[expect(dead_code)]
     Reserved,
 }
 
@@ -25,10 +26,15 @@ pub struct MemoryManager {
 
 impl MemoryManager {
     pub fn new() -> Self {
-        let mut pages = vec![PageInfo { owner: PageOwner::Free }; 256];
+        let mut pages = vec![
+            PageInfo {
+                owner: PageOwner::Free
+            };
+            256
+        ];
         // First 16 pages reserved for kernel
-        for i in 0..16 {
-            pages[i].owner = PageOwner::Kernel;
+        for page in pages.iter_mut().take(16) {
+            page.owner = PageOwner::Kernel;
         }
         MemoryManager { pages }
     }
@@ -50,13 +56,13 @@ impl MemoryManager {
                 start = None;
             }
         }
-        if let Some(s) = start {
-            if run == count {
-                for i in s..s + count {
-                    self.pages[i].owner = owner.clone();
-                }
-                return Some(s);
+        if let Some(s) = start
+            && run == count
+        {
+            for i in s..s + count {
+                self.pages[i].owner = owner.clone();
             }
+            return Some(s);
         }
         None
     }

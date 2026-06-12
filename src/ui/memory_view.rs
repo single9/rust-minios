@@ -1,3 +1,4 @@
+use crate::kernel::memory::{MemoryManager, PageOwner};
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
@@ -5,7 +6,6 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
 };
-use crate::kernel::memory::{MemoryManager, PageOwner};
 
 pub fn render_memory_view(f: &mut Frame, area: Rect, memory: &MemoryManager) {
     let chunks = Layout::default()
@@ -17,15 +17,19 @@ pub fn render_memory_view(f: &mut Frame, area: Rect, memory: &MemoryManager) {
     let mut lines: Vec<Line> = Vec::new();
 
     // Title
-    lines.push(Line::from(vec![
-        Span::styled("Memory Map (256 pages x 4KB = 1MB)", Style::default().fg(Color::White)),
-    ]));
+    lines.push(Line::from(vec![Span::styled(
+        "Memory Map (256 pages x 4KB = 1MB)",
+        Style::default().fg(Color::White),
+    )]));
     lines.push(Line::from(""));
 
     for row in 0..16 {
         let mut spans: Vec<Span> = Vec::new();
         // Row number
-        spans.push(Span::styled(format!("{:02X} ", row), Style::default().fg(Color::DarkGray)));
+        spans.push(Span::styled(
+            format!("{:02X} ", row),
+            Style::default().fg(Color::DarkGray),
+        ));
         for col in 0..16 {
             let page_idx = row * 16 + col;
             let color = match pages[page_idx].owner {
@@ -39,8 +43,7 @@ pub fn render_memory_view(f: &mut Frame, area: Rect, memory: &MemoryManager) {
         lines.push(Line::from(spans));
     }
 
-    let map_widget = Paragraph::new(lines)
-        .block(Block::bordered().title(" Memory Map "));
+    let map_widget = Paragraph::new(lines).block(Block::bordered().title(" Memory Map "));
     f.render_widget(map_widget, chunks[0]);
 
     // Stats
@@ -49,9 +52,13 @@ pub fn render_memory_view(f: &mut Frame, area: Rect, memory: &MemoryManager) {
     let frag_pct = (frag_ratio * 100.0) as u8;
     let total_kb = stats.total * 4;
     let used_kb = (stats.used_kernel + stats.used_process) * 4;
-    let frag_color = if frag_pct > 70 { Color::Red }
-                     else if frag_pct > 30 { Color::Yellow }
-                     else { Color::Green };
+    let frag_color = if frag_pct > 70 {
+        Color::Red
+    } else if frag_pct > 30 {
+        Color::Yellow
+    } else {
+        Color::Green
+    };
 
     let legend_lines: Vec<Line> = vec![
         Line::from(""),
@@ -67,11 +74,18 @@ pub fn render_memory_view(f: &mut Frame, area: Rect, memory: &MemoryManager) {
         ]),
         Line::from(format!(
             "  Total: {} KB | Used: {} KB | Free: {} KB",
-            total_kb, used_kb, stats.free * 4,
+            total_kb,
+            used_kb,
+            stats.free * 4,
         )),
         Line::from(""),
         Line::from(vec![
-            Span::styled("  Fragmentation: ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "  Fragmentation: ",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::styled(format!("{}%", frag_pct), Style::default().fg(frag_color)),
             Span::raw(format!("  (largest free block: {} KB)", max_free * 4)),
         ]),

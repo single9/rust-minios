@@ -29,6 +29,7 @@ pub struct Process {
     pub priority: u8,
     pub cpu_time: u64,
     pub memory_pages: Vec<u32>,
+    #[expect(dead_code)]
     pub created_at: u64,
     pub state_history: VecDeque<ProcessState>,
 }
@@ -60,16 +61,19 @@ impl ProcessTable {
         self.next_pid += 1;
         let mut state_history = VecDeque::new();
         state_history.push_back(ProcessState::New);
-        self.processes.insert(pid, Process {
+        self.processes.insert(
             pid,
-            name: name.to_string(),
-            state: ProcessState::New,
-            priority,
-            cpu_time: 0,
-            memory_pages: Vec::new(),
-            created_at: 0,
-            state_history,
-        });
+            Process {
+                pid,
+                name: name.to_string(),
+                state: ProcessState::New,
+                priority,
+                cpu_time: 0,
+                memory_pages: Vec::new(),
+                created_at: 0,
+                state_history,
+            },
+        );
         pid
     }
 
@@ -88,7 +92,7 @@ impl ProcessTable {
     }
 
     pub fn record_all_states(&mut self) {
-        for (_, p) in &mut self.processes {
+        for p in self.processes.values_mut() {
             p.record_state();
         }
     }
@@ -99,6 +103,7 @@ impl ProcessTable {
         procs
     }
 
+    #[expect(dead_code)]
     pub fn remove(&mut self, pid: u32) {
         self.processes.remove(&pid);
     }

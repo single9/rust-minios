@@ -155,19 +155,32 @@ impl Shell {
                         match first_word {
                             "if" | "for" => {
                                 depth += 1;
-                                if in_else { else_body.push(inner.to_string()); }
-                                else { if_body.push(inner.to_string()); }
+                                if in_else {
+                                    else_body.push(inner.to_string());
+                                } else {
+                                    if_body.push(inner.to_string());
+                                }
                             }
-                            "else" if depth == 1 => { in_else = true; }
+                            "else" if depth == 1 => {
+                                in_else = true;
+                            }
                             "end" => {
                                 depth -= 1;
-                                if depth == 0 { break; }
-                                if in_else { else_body.push(inner.to_string()); }
-                                else { if_body.push(inner.to_string()); }
+                                if depth == 0 {
+                                    break;
+                                }
+                                if in_else {
+                                    else_body.push(inner.to_string());
+                                } else {
+                                    if_body.push(inner.to_string());
+                                }
                             }
                             _ => {
-                                if in_else { else_body.push(inner.to_string()); }
-                                else { if_body.push(inner.to_string()); }
+                                if in_else {
+                                    else_body.push(inner.to_string());
+                                } else {
+                                    if_body.push(inner.to_string());
+                                }
                             }
                         }
                     }
@@ -185,7 +198,10 @@ impl Shell {
                     let for_parts: Vec<&str> = rest.splitn(3, ' ').collect();
                     let var_name = for_parts.first().copied().unwrap_or("").to_string();
                     let values: Vec<String> = if for_parts.len() >= 3 && for_parts[1] == "in" {
-                        for_parts[2].split_whitespace().map(|s| s.to_string()).collect()
+                        for_parts[2]
+                            .split_whitespace()
+                            .map(|s| s.to_string())
+                            .collect()
                     } else {
                         Vec::new()
                     };
@@ -197,15 +213,26 @@ impl Shell {
                         let inner = lines[ip].trim();
                         ip += 1;
                         let inner_exp = self.expand_vars(inner);
-                        let first_word = inner_exp.trim().split_whitespace().next().unwrap_or("").to_string();
+                        let first_word = inner_exp
+                            .split_whitespace()
+                            .next()
+                            .unwrap_or("")
+                            .to_string();
                         match first_word.as_str() {
-                            "if" | "for" => { depth += 1; loop_body.push(inner.to_string()); }
-                            "end" => {
-                                depth -= 1;
-                                if depth == 0 { break; }
+                            "if" | "for" => {
+                                depth += 1;
                                 loop_body.push(inner.to_string());
                             }
-                            _ => { loop_body.push(inner.to_string()); }
+                            "end" => {
+                                depth -= 1;
+                                if depth == 0 {
+                                    break;
+                                }
+                                loop_body.push(inner.to_string());
+                            }
+                            _ => {
+                                loop_body.push(inner.to_string());
+                            }
                         }
                     }
 
@@ -348,7 +375,9 @@ impl Shell {
                 } else {
                     let path = self.resolve_path(args);
                     match kernel.dispatch(Syscall::CreateDir { path: path.clone() }) {
-                        SyscallResult::Success => self.push_output(&format!("Created directory: {}", path)),
+                        SyscallResult::Success => {
+                            self.push_output(&format!("Created directory: {}", path))
+                        }
                         SyscallResult::Err(e) => self.push_output(&format!("Error: {}", e)),
                         _ => {}
                     }
@@ -360,7 +389,9 @@ impl Shell {
                 } else {
                     let path = self.resolve_path(args);
                     match kernel.dispatch(Syscall::Create { path: path.clone() }) {
-                        SyscallResult::Success => self.push_output(&format!("Created file: {}", path)),
+                        SyscallResult::Success => {
+                            self.push_output(&format!("Created file: {}", path))
+                        }
                         SyscallResult::Err(e) => self.push_output(&format!("Error: {}", e)),
                         _ => {}
                     }
@@ -379,15 +410,12 @@ impl Shell {
                 }
             }
             "ps" => {
-                match kernel.dispatch(Syscall::ListProcesses) {
-                    SyscallResult::Str(s) => {
-                        self.push_output("PID  NAME             STATE       PRI  CPU");
-                        self.push_output("---  ---------------  ----------  ---  ---");
-                        for line in s.lines() {
-                            self.push_output(line);
-                        }
+                if let SyscallResult::Str(s) = kernel.dispatch(Syscall::ListProcesses) {
+                    self.push_output("PID  NAME             STATE       PRI  CPU");
+                    self.push_output("---  ---------------  ----------  ---  ---");
+                    for line in s.lines() {
+                        self.push_output(line);
                     }
-                    _ => {}
                 }
             }
             "kill" => {
@@ -395,7 +423,9 @@ impl Shell {
                     self.push_output("Usage: kill <pid>");
                 } else if let Ok(pid) = args.trim().parse::<u32>() {
                     match kernel.dispatch(Syscall::Kill { pid }) {
-                        SyscallResult::Success => self.push_output(&format!("Killed process {}", pid)),
+                        SyscallResult::Success => {
+                            self.push_output(&format!("Killed process {}", pid))
+                        }
                         SyscallResult::Err(e) => self.push_output(&format!("Error: {}", e)),
                         _ => {}
                     }
@@ -407,17 +437,20 @@ impl Shell {
                 if args.is_empty() {
                     self.push_output("Usage: exec <name>");
                 } else {
-                    match kernel.dispatch(Syscall::Fork { name: args.to_string(), priority: 5 }) {
-                        SyscallResult::Value(pid) => self.push_output(&format!("Started process '{}' with PID={}", args, pid)),
+                    match kernel.dispatch(Syscall::Fork {
+                        name: args.to_string(),
+                        priority: 5,
+                    }) {
+                        SyscallResult::Value(pid) => self
+                            .push_output(&format!("Started process '{}' with PID={}", args, pid)),
                         SyscallResult::Err(e) => self.push_output(&format!("Error: {}", e)),
                         _ => {}
                     }
                 }
             }
             "free" => {
-                match kernel.dispatch(Syscall::MemStats) {
-                    SyscallResult::Str(s) => self.push_output(&s),
-                    _ => {}
+                if let SyscallResult::Str(s) = kernel.dispatch(Syscall::MemStats) {
+                    self.push_output(&s);
                 }
             }
             "malloc" => {
@@ -425,7 +458,9 @@ impl Shell {
                     self.push_output("Usage: malloc <bytes>");
                 } else if let Ok(size) = args.trim().parse::<usize>() {
                     match kernel.dispatch(Syscall::Malloc { size }) {
-                        SyscallResult::Value(ptr) => self.push_output(&format!("Allocated {} bytes at page {}", size, ptr)),
+                        SyscallResult::Value(ptr) => {
+                            self.push_output(&format!("Allocated {} bytes at page {}", size, ptr))
+                        }
                         SyscallResult::Err(e) => self.push_output(&format!("Error: {}", e)),
                         _ => {}
                     }
@@ -447,7 +482,9 @@ impl Shell {
                 } else {
                     let new_path = self.resolve_path(args);
                     // Verify directory exists
-                    match kernel.dispatch(Syscall::ListDir { path: new_path.clone() }) {
+                    match kernel.dispatch(Syscall::ListDir {
+                        path: new_path.clone(),
+                    }) {
                         SyscallResult::Str(_) => {
                             self.cwd = new_path;
                         }
@@ -459,13 +496,10 @@ impl Shell {
                 }
             }
             "tree" => {
-                match kernel.dispatch(Syscall::GetTree) {
-                    SyscallResult::Str(s) => {
-                        for line in s.lines() {
-                            self.push_output(line);
-                        }
+                if let SyscallResult::Str(s) = kernel.dispatch(Syscall::GetTree) {
+                    for line in s.lines() {
+                        self.push_output(line);
                     }
-                    _ => {}
                 }
             }
             "edit" => {
@@ -502,7 +536,9 @@ impl Shell {
                     if self.vars.is_empty() {
                         self.push_output("(no variables set)");
                     } else {
-                        let pairs: Vec<String> = self.vars.iter()
+                        let pairs: Vec<String> = self
+                            .vars
+                            .iter()
                             .map(|(k, v)| format!("{}={}", k, v))
                             .collect();
                         for p in pairs {
@@ -538,7 +574,10 @@ impl Shell {
                         return None;
                     }
                 }
-                self.push_output(&format!("Unknown command: {}. Type 'help' for help.", command));
+                self.push_output(&format!(
+                    "Unknown command: {}. Type 'help' for help.",
+                    command
+                ));
             }
         }
         None

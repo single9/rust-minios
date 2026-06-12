@@ -1,19 +1,19 @@
 pub mod dashboard;
+pub mod editor;
+pub mod fs_view;
 pub mod memory_view;
 pub mod process_view;
-pub mod fs_view;
-pub mod editor;
 pub mod shell;
 
+use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use ratatui::{Frame, Terminal, backend::CrosstermBackend};
 use std::io::Stdout;
 use std::time::{Duration, Instant};
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers, KeyEventKind};
-use ratatui::{Frame, Terminal, backend::CrosstermBackend};
 
-use crate::kernel::Kernel;
-use self::shell::Shell;
 use self::editor::Editor;
 pub use self::fs_view::FsViewState;
+use self::shell::Shell;
+use crate::kernel::Kernel;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AppMode {
@@ -46,18 +46,21 @@ impl App {
         }
     }
 
-    pub fn run(&mut self, terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn run(
+        &mut self,
+        terminal: &mut Terminal<CrosstermBackend<Stdout>>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let tick_rate = Duration::from_millis(100);
         let mut last_tick = Instant::now();
 
         loop {
-        terminal.draw(|f| self.draw(f))?;
+            terminal.draw(|f| self.draw(f))?;
 
             let timeout = tick_rate.saturating_sub(last_tick.elapsed());
-            if event::poll(timeout)? {
-                if let Event::Key(key) = event::read()? {
-                    self.handle_key(key);
-                }
+            if event::poll(timeout)?
+                && let Event::Key(key) = event::read()?
+            {
+                self.handle_key(key);
             }
 
             if last_tick.elapsed() >= tick_rate {
@@ -89,12 +92,30 @@ impl App {
 
         // F-key tab switching (except in editor where Ctrl+Q exits)
         match key.code {
-            KeyCode::F(1) => { self.mode = AppMode::Dashboard; return; }
-            KeyCode::F(2) => { self.mode = AppMode::Memory; return; }
-            KeyCode::F(3) => { self.mode = AppMode::Processes; return; }
-            KeyCode::F(4) => { self.mode = AppMode::FileSystem; return; }
-            KeyCode::F(5) => { self.mode = AppMode::Editor; return; }
-            KeyCode::F(6) => { self.mode = AppMode::Shell; return; }
+            KeyCode::F(1) => {
+                self.mode = AppMode::Dashboard;
+                return;
+            }
+            KeyCode::F(2) => {
+                self.mode = AppMode::Memory;
+                return;
+            }
+            KeyCode::F(3) => {
+                self.mode = AppMode::Processes;
+                return;
+            }
+            KeyCode::F(4) => {
+                self.mode = AppMode::FileSystem;
+                return;
+            }
+            KeyCode::F(5) => {
+                self.mode = AppMode::Editor;
+                return;
+            }
+            KeyCode::F(6) => {
+                self.mode = AppMode::Shell;
+                return;
+            }
             _ => {}
         }
 

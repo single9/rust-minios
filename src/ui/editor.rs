@@ -49,9 +49,14 @@ impl Editor {
             let content = self.lines.join("\n") + "\n";
             // Ensure file exists
             if kernel.fs.resolve_path(filename).is_none() {
-                kernel.dispatch(Syscall::Create { path: filename.clone() });
+                kernel.dispatch(Syscall::Create {
+                    path: filename.clone(),
+                });
             }
-            kernel.dispatch(Syscall::Write { path: filename.clone(), content });
+            kernel.dispatch(Syscall::Write {
+                path: filename.clone(),
+                content,
+            });
             self.modified = false;
             self.status_msg = format!("Saved: {}", filename);
         } else {
@@ -161,7 +166,13 @@ impl Editor {
     pub fn status_bar_text(&self) -> String {
         let fname = self.filename.as_deref().unwrap_or("[No Name]");
         let modified = if self.modified { " [modified]" } else { "" };
-        format!("{}{} | Row:{} Col:{} | Ctrl+S save | Ctrl+Q quit | {}",
-            fname, modified, self.cursor_row + 1, self.cursor_col + 1, self.status_msg)
+        format!(
+            "{}{} | Row:{} Col:{} | Ctrl+S save | Ctrl+Q quit | {}",
+            fname,
+            modified,
+            self.cursor_row + 1,
+            self.cursor_col + 1,
+            self.status_msg
+        )
     }
 }
