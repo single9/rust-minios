@@ -88,6 +88,11 @@ jobs:
           rustup default stable
           rustup target add x86_64-apple-darwin aarch64-apple-darwin
 
+      - name: Install zig
+        uses: taiki-e/install-action@v2
+        with:
+          tool: zig
+
       - name: Install cargo-zigbuild
         uses: taiki-e/install-action@v2
         with:
