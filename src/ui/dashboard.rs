@@ -100,11 +100,7 @@ fn render_dashboard_content(f: &mut Frame, area: Rect, app: &App) {
 
     let total_kb = stats.total * 4;
     let used_kb = (stats.used_kernel + stats.used_process) * 4;
-    let used_pct = if total_kb > 0 {
-        (used_kb * 100) / total_kb
-    } else {
-        0
-    };
+    let used_pct = (used_kb * 100).checked_div(total_kb).unwrap_or(0);
 
     let stat_lines = vec![
         Line::from(vec![
