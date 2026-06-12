@@ -89,9 +89,9 @@ jobs:
           rustup target add x86_64-apple-darwin aarch64-apple-darwin
 
       - name: Install zig
-        uses: taiki-e/install-action@v2
-        with:
-          tool: zig
+        run: |
+          curl -fsSL https://ziglang.org/download/0.14.0/zig-linux-x86_64-0.14.0.tar.xz | tar xJ
+          echo "$PWD/zig-linux-x86_64-0.14.0" >> "$GITHUB_PATH"
 
       - name: Install cargo-zigbuild
         uses: taiki-e/install-action@v2
