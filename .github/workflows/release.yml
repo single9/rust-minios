@@ -20,8 +20,8 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  prepare:
-    name: Prepare release
+  version:
+    name: Prepare version
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -53,7 +53,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Bump Cargo.toml and generate changelog
+      - name: Bump and tag
         if: github.event_name == 'workflow_dispatch'
         run: |
           VERSION="${{ steps.version.outputs.version }}"
@@ -75,10 +75,17 @@ jobs:
           name: changelog
           path: CHANGELOG.md
 
-  build-linux:
-    name: Build (x86_64-linux)
-    needs: prepare
-    runs-on: ubuntu-latest
+  build:
+    name: Build (${{ matrix.target }})
+    needs: version
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-linux
+          - os: macos-latest
+            target: aarch64-macos
     steps:
       - uses: actions/checkout@v4
 
@@ -101,103 +108,24 @@ jobs:
 
       - name: Package artifacts
         run: |
-          VERSION="${{ needs.prepare.outputs.version }}"
+          VERSION="${{ needs.version.outputs.version }}"
+          TARGET="${{ matrix.target }}"
           mkdir -p dist
           cp target/release/rust-minios dist/
           cp README.md dist/
           cp -r docs dist/docs
           cd dist
-          tar czf "../rust-minios-${VERSION}-x86_64-linux.tar.gz" rust-minios README.md docs
+          tar czf "../rust-minios-${VERSION}-${TARGET}.tar.gz" rust-minios README.md docs
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: artifact-x86_64-linux
-          path: rust-minios-${{ needs.prepare.outputs.version }}-x86_64-linux.tar.gz
-
-  build-macos-arm:
-    name: Build (aarch64-macos)
-    needs: prepare
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        run: |
-          rustup toolchain install stable --profile minimal
-          rustup default stable
-
-      - name: Restore cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-release-${{ hashFiles('Cargo.lock') }}
-
-      - name: Build release binary
-        run: cargo build --release
-
-      - name: Package artifacts
-        run: |
-          VERSION="${{ needs.prepare.outputs.version }}"
-          mkdir -p dist
-          cp target/release/rust-minios dist/
-          cp README.md dist/
-          cp -r docs dist/docs
-          cd dist
-          tar czf "../rust-minios-${VERSION}-aarch64-macos.tar.gz" rust-minios README.md docs
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: artifact-aarch64-macos
-          path: rust-minios-${{ needs.prepare.outputs.version }}-aarch64-macos.tar.gz
-
-  build-macos-intel:
-    name: Build (x86_64-macos)
-    needs: prepare
-    runs-on: macos-13
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        run: |
-          rustup toolchain install stable --profile minimal
-          rustup default stable
-
-      - name: Restore cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-release-${{ hashFiles('Cargo.lock') }}
-
-      - name: Build release binary
-        run: cargo build --release
-
-      - name: Package artifacts
-        run: |
-          VERSION="${{ needs.prepare.outputs.version }}"
-          mkdir -p dist
-          cp target/release/rust-minios dist/
-          cp README.md dist/
-          cp -r docs dist/docs
-          cd dist
-          tar czf "../rust-minios-${VERSION}-x86_64-macos.tar.gz" rust-minios README.md docs
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: artifact-x86_64-macos
-          path: rust-minios-${{ needs.prepare.outputs.version }}-x86_64-macos.tar.gz
+          name: artifact-${{ matrix.target }}
+          path: rust-minios-${{ needs.version.outputs.version }}-${{ matrix.target }}.tar.gz
 
   release:
     name: Create release
-    needs: [prepare, build-linux]
+    needs: [version, build]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -207,48 +135,19 @@ jobs:
         with:
           name: changelog
 
-      - name: Download Linux artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: artifact-x86_64-linux
-
-      - name: Create release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ needs.prepare.outputs.version }}
-          name: Release ${{ needs.prepare.outputs.version }}
-          body_path: CHANGELOG.md
-          files: |
-            rust-minios-*.tar.gz
-          draft: true
-          prerelease: false
-
-  publish:
-    name: Publish release
-    needs: [prepare, release, build-macos-arm, build-macos-intel]
-    if: always()
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           pattern: artifact-*
           merge-multiple: true
 
-      - name: List artifacts
-        run: ls -la rust-minios-*.tar.gz || echo "No artifacts found"
-
-      - name: Upload macOS artifacts and publish release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          TAG="${{ needs.prepare.outputs.version }}"
-          for f in rust-minios-*-macos.tar.gz; do
-            if [ -f "$f" ]; then
-              echo "Uploading $f to $TAG..."
-              gh release upload "$TAG" "$f" --clobber
-            fi
-          done
-          gh release edit "$TAG" --draft=false
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.version.outputs.version }}
+          name: Release ${{ needs.version.outputs.version }}
+          body_path: CHANGELOG.md
+          files: |
+            rust-minios-*.tar.gz
+          draft: false
+          prerelease: false
