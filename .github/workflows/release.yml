@@ -76,16 +76,9 @@ jobs:
           path: CHANGELOG.md
 
   build:
-    name: Build (${{ matrix.target }})
+    name: Build
     needs: version
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-latest
-            target: x86_64-linux
-          - os: macos-latest
-            target: aarch64-macos
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -93,6 +86,12 @@ jobs:
         run: |
           rustup toolchain install stable --profile minimal
           rustup default stable
+          rustup target add x86_64-apple-darwin aarch64-apple-darwin
+
+      - name: Install cargo-zigbuild
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-zigbuild
 
       - name: Restore cache
         uses: actions/cache@v4
@@ -101,27 +100,42 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-cargo-release-${{ hashFiles('Cargo.lock') }}
+          key: ubuntu-cargo-release-${{ hashFiles('Cargo.lock') }}
 
-      - name: Build release binary
+      - name: Build Linux (x86_64)
         run: cargo build --release
+
+      - name: Build macOS (Intel)
+        run: cargo zigbuild --release --target x86_64-apple-darwin
+
+      - name: Build macOS (ARM64)
+        run: cargo zigbuild --release --target aarch64-apple-darwin
 
       - name: Package artifacts
         run: |
           VERSION="${{ needs.version.outputs.version }}"
-          TARGET="${{ matrix.target }}"
           mkdir -p dist
-          cp target/release/rust-minios dist/
-          cp README.md dist/
-          cp -r docs dist/docs
-          cd dist
-          tar czf "../rust-minios-${VERSION}-${TARGET}.tar.gz" rust-minios README.md docs
+
+          cp target/release/rust-minios dist/rust-minios-x86_64-linux
+          cp target/x86_64-apple-darwin/release/rust-minios dist/rust-minios-x86_64-macos
+          cp target/aarch64-apple-darwin/release/rust-minios dist/rust-minios-aarch64-macos
+
+          for f in dist/rust-minios-*; do
+            plat="${f#dist/rust-minios-}"
+            cp README.md "dist/README.md"
+            cp -r docs "dist/docs"
+            cd dist
+            tar czf "../rust-minios-${VERSION}-${plat}.tar.gz" "rust-minios-${plat}" README.md docs
+            cd ..
+            rm -rf dist/docs dist/README.md "dist/rust-minios-${plat}"
+          done
+          rm -rf dist
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: artifact-${{ matrix.target }}
-          path: rust-minios-${{ needs.version.outputs.version }}-${{ matrix.target }}.tar.gz
+          name: artifacts
+          path: rust-minios-${{ needs.version.outputs.version }}-*.tar.gz
 
   release:
     name: Create release
@@ -135,11 +149,10 @@ jobs:
         with:
           name: changelog
 
-      - name: Download all artifacts
+      - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: artifact-*
-          merge-multiple: true
+          name: artifacts
 
       - name: Create release
         uses: softprops/action-gh-release@v2
